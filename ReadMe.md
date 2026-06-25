@@ -1,32 +1,27 @@
-# PriceScope — Real-Time Cross-Retailer Price Comparison
+# SmartScan — Real-Time Price Comparison
 
-Live price comparison across Amazon, Walmart, BestBuy, Target, and eBay. Search any product and see every retailer's current price in one view.
+Compare prices across Amazon, Walmart, and eBay in one search. See the best deal instantly.
 
 **[Live Demo](#)** · **[Backend API](#)**
 
 ---
 
-## The Core Problem This Solves
+## The Problem This Solves
 
-Searching "MacBook Pro" across 5 retailers independently returns 5 different products. Amazon shows one SKU, Walmart shows a refurbished bundle, eBay shows a used listing.
+Searching "MacBook Pro" on three retailers returns three different results. Amazon shows one SKU, Walmart shows a restored bundle, eBay shows a used listing. You're not comparing prices — you're comparing different products.
 
-**The naive approach — concurrent keyword searches — doesn't compare prices. It compares different products.**
-
-PriceScope solves this with a two-phase fetch:
+**SmartScan solves this with a two-phase fetch:**
 
 ```
-Phase 1: Amazon (Rainforest API)
-  keyword → search → ASIN → product detail page
-  → extracts: exact title, UPC, real price, image
+Phase 1: Amazon (SerpApi Amazon engine)
+  keyword → search → extract exact product title + ASIN + price
 
 Phase 2: All other retailers (parallel)
-  Amazon's exact title → Walmart engine
-                       → Google Shopping (BestBuy filter)
-                       → Google Shopping (Target filter)
-                       → eBay engine
+  Amazon's exact title → Walmart engine  (direct product URL)
+                       → eBay engine     (brand-filtered results)
 ```
 
-Searching `"Lenovo IdeaPad Slim 3i 15.6" FHD 8GB 256GB"` across retailers is infinitely more accurate than searching `"lenovo laptop"`. Phase 1 is the key insight.
+Searching `"Sony WH-1000XM5 Wireless Noise Canceling"` across retailers is far more accurate than searching `"sony headphones"`. Phase 1 is the key insight.
 
 ---
 
@@ -35,55 +30,57 @@ Searching `"Lenovo IdeaPad Slim 3i 15.6" FHD 8GB 256GB"` across retailers is inf
 ```
 Client (React + Vite)
     │
-    └── GET /api/search?q=macbook
+    └── GET /api/search?q=macbook+pro
             │
             ├── Redis cache lookup (1hr TTL)
-            │     └── HIT → return cached, X-Cache: HIT header
+            │     └── HIT  → return cached result, X-Cache: HIT header
             │
             └── MISS → ScraperService.fetchAllVendors()
                           │
-                          ├── Phase 1: fetchAmazon() ← sequential, blocking
-                          │     └── Rainforest API (2 calls: search → product detail)
-                          │           └── returns: exact title, ASIN, UPC, price
+                          ├── Phase 1: fetchAmazon() — sequential, blocking
+                          │     └── SerpApi Amazon engine
+                          │           └── returns: exact title, ASIN, price, image
                           │
-                          └── Phase 2: parallel Promise.allSettled()
+                          └── Phase 2: Promise.allSettled() — parallel
                                 ├── fetchWalmart()  ← SerpApi walmart engine
-                                ├── fetchBestBuy()  ← SerpApi google_shopping + source filter
-                                ├── fetchTarget()   ← SerpApi google_shopping + source filter
-                                └── fetchEbay()     ← SerpApi ebay engine (flagged approximate)
+                                └── fetchEbay()     ← SerpApi ebay engine
+                                                        (brand-filtered, Buy It Now)
 ```
 
 ---
 
 ## Technical Decisions
 
-**Why Amazon runs first and blocks Phase 2**  
-Every other retailer searches using Amazon's exact product title. Running them concurrently would mean they all search with the original keyword — defeating the whole point.
+**Why Amazon runs first and blocks Phase 2**
+Every other retailer searches using Amazon's exact product title. Running all three concurrently would mean Walmart and eBay search with the raw keyword — returning unrelated products. Amazon's title is the canonical anchor.
 
-**Why `truncateTitle(8 words)`**  
-Amazon titles like `"Apple 2026 MacBook Neo 13-inch Laptop with A18 Pro chip: Built for AI and Apple Intelligence..."` return zero results on Walmart and Target. 8 words gives enough specificity without breaking cross-retailer search.
+**Why `truncateTitle(8 words)`**
+Amazon titles like `"Sony WH-1000XM5 Industry Leading Wireless Noise Canceling Headphones with Auto Noise Canceling Optimizer..."` return zero results on Walmart when passed in full. 8 words gives enough specificity without breaking cross-retailer search.
 
-**Why stable search URLs for BestBuy and Target instead of SerpApi's links**  
-Google Shopping redirect links expire within minutes. `bestbuy.com/site/searchpage.jsp?st=...` and `target.com/s?searchTerm=...` are permanent, canonical search URLs that will always work.
+**Why eBay filters by first keyword**
+eBay's engine returns the closest match, not an exact match. Searching "Samsung 65 inch TV" could return an LG. We extract the first word ("Samsung") and filter results to only those whose title contains it — dropping mismatched brands before they reach the UI.
 
-**Why eBay is visually separated in the UI**  
-eBay results are user-sold inventory — condition varies, configurations differ. Rendering them identically to retail listings misleads the user. They appear in a separate "Other Listings" section with a "condition may vary" label.
+**Why Walmart prefers new condition over restored**
+Walmart mixes first-party and marketplace sellers. We scan all results and pick the first where `detectCondition(title) === "new"`, falling back to restored only if no new listing exists.
 
-**Why 1-hour Redis TTL**  
-Retail prices don't change minute-to-minute but do change daily. 1 hour gives a good balance between API cost (each search burns 5-6 API credits) and price freshness. Cache key is normalized: `search:macbook-pro-14` so minor query variations hit the same cache entry.
+**Why Redis TTL is 1 hour**
+Retail prices don't change minute-to-minute but do change daily. 1 hour balances API credit cost (each search burns 3 SerpApi credits) against price freshness. Cache key is normalized: `search:macbook-pro` so minor query variations hit the same cache entry.
+
+**Why condition detection matters**
+Walmart calls refurbished products "Restored". eBay mixes new, used, and refurbished in the same results. `detectCondition()` scans titles for: `restored`, `refurbished`, `renewed`, `open box`, `used`, `pre-owned`, `remanufactured` — and badges each card accordingly so users never mistake a refurbished listing for new.
 
 ---
 
 ## Stack
 
-| Layer         | Choice                                  | Why                                             |
-| ------------- | --------------------------------------- | ----------------------------------------------- |
-| Backend       | Node.js + Express + TypeScript (strict) | Type safety across API response shapes          |
-| Price data    | Rainforest API (Amazon) + SerpApi       | Best-available programmatic access per retailer |
-| Cache         | Redis (ioredis)                         | Reduce API spend, sub-100ms on cache hits       |
-| Logging       | Pino                                    | Structured JSON logs, vendor success rates      |
-| Rate limiting | express-rate-limit                      | Prevent API credit drain from abuse             |
-| Frontend      | React + Vite                            | Fast dev experience, no build complexity        |
+| Layer         | Choice                                    | Why                                            |
+| ------------- | ----------------------------------------- | ---------------------------------------------- |
+| Backend       | Node.js + Express + TypeScript            | Type safety across all API response shapes     |
+| Price data    | SerpApi (Amazon + Walmart + eBay engines) | Dedicated engines per retailer, no scraping    |
+| Cache         | Redis                                     | Sub-100ms on cache hits, reduces API spend     |
+| Logging       | Pino                                      | Structured JSON logs with vendor success rates |
+| Rate limiting | express-rate-limit                        | Prevents API credit drain from abuse           |
+| Frontend      | React + Vite                              | Fast dev, no build complexity                  |
 
 ---
 
@@ -91,26 +88,46 @@ Retail prices don't change minute-to-minute but do change daily. 1 hour gives a 
 
 ### `GET /api/search?q={query}`
 
-Returns real-time price comparison across all retailers.
+Returns live prices from Amazon, Walmart, and eBay.
 
 **Response**
 
 ```json
 {
-  "title": "Lenovo IdeaPad Slim 3i...",
+  "title": "Sony WH-1000XM5 Wireless Noise Canceling",
   "image": "https://...",
-  "modelNumber": "82RK00BAUS",
-  "upc": "195042436822",
-  "lowestPrice": 379.99,
+  "modelNumber": "WH1000XM5/B",
+  "upc": "N/A",
+  "lowestPrice": 279.99,
   "comparisonQuality": "exact",
-  "responseMs": 8241,
+  "responseMs": 6842,
   "sources": [
     {
       "storeName": "Amazon",
-      "price": 379.99,
-      "url": "https://amazon.com/dp/B0XXXXX",
+      "price": 279.99,
+      "url": "https://www.amazon.com/dp/B09XS7JWHH",
       "isExactMatch": true,
-      "inStock": true
+      "inStock": true,
+      "condition": "new",
+      "title": "Sony WH-1000XM5 Wireless Noise Canceling Headphones..."
+    },
+    {
+      "storeName": "Walmart",
+      "price": 298.0,
+      "url": "https://www.walmart.com/ip/12345678",
+      "isExactMatch": true,
+      "inStock": true,
+      "condition": "new",
+      "title": "Sony WH-1000XM5 Noise Canceling Headphones Black"
+    },
+    {
+      "storeName": "eBay",
+      "price": 249.0,
+      "url": "https://www.ebay.com/itm/...",
+      "isExactMatch": false,
+      "inStock": true,
+      "condition": "new",
+      "title": "Sony WH-1000XM5 Wireless Headphones Brand New Sealed"
     }
   ]
 }
@@ -119,7 +136,7 @@ Returns real-time price comparison across all retailers.
 **Headers**
 
 - `X-Cache: HIT` — served from Redis cache
-- `X-Cache: MISS` — freshly fetched
+- `X-Cache: MISS` — freshly fetched from all retailers
 
 **Rate limit:** 30 requests/minute per IP
 
@@ -127,7 +144,7 @@ Returns real-time price comparison across all retailers.
 
 ### `GET /api/health`
 
-Vendor reliability stats and cache status.
+Vendor reliability stats and cache status. Useful for monitoring.
 
 ```json
 {
@@ -136,14 +153,19 @@ Vendor reliability stats and cache status.
   "cache": "connected",
   "vendors": {
     "Amazon": {
-      "successRate": "94%",
-      "avgResponseMs": "4200ms",
+      "successRate": "91%",
+      "avgResponseMs": "3800ms",
       "lastSuccess": "2m ago"
     },
     "Walmart": {
-      "successRate": "87%",
-      "avgResponseMs": "1800ms",
-      "lastSuccess": "5m ago"
+      "successRate": "88%",
+      "avgResponseMs": "1600ms",
+      "lastSuccess": "2m ago"
+    },
+    "eBay": {
+      "successRate": "95%",
+      "avgResponseMs": "1200ms",
+      "lastSuccess": "2m ago"
     }
   }
 }
@@ -154,28 +176,46 @@ Vendor reliability stats and cache status.
 ## Local Setup
 
 ```bash
-# Clone and install
-git clone https://github.com/yourname/pricescope
-cd pricescope/backend && npm install
+# Clone
+git clone https://github.com/YOUR_USERNAME/smartscan
+cd smartscan
+
+# Install backend
+cd backend && npm install
+
+# Install frontend
 cd ../frontend && npm install
 
-# Environment (backend/.env)
-DATABASE_URL=postgresql://...
-REDIS_URL=redis://localhost:6379
-RAINFOREST_API_KEY=your_key
-SERPAPI_API_KEY=your_key
+# Environment — create backend/.env
+SERPAPI_API_KEY=your_serpapi_key
+REDIS_URL=redis://localhost:6379   # optional — app works without Redis
+NODE_ENV=development
+PORT=5000
 
-# Run
+# Run backend
 cd backend && npm run dev
+
+# Run frontend (separate terminal)
 cd frontend && npm run dev
 ```
 
-Redis is optional — the app runs without it, every search just hits the APIs directly.
+Redis is optional. Without it every search hits the APIs fresh — slower but functional.
 
 ---
 
 ## Known Limitations
 
-- **Apple products on Amazon** — Rainforest sometimes returns no results for heavily restricted ASINs (iPhone, AirPods). When Amazon fails, other retailers fall back to keyword search and comparison accuracy degrades. The frontend signals this with an "approximate comparison" warning.
-- **Target links** — No dedicated Target API exists. Prices come from Google Shopping; the link points to Target's search page for the product, not a specific product page.
-- **eBay** — User-sold inventory by nature. Condition and configuration vary. Treated as reference pricing, not direct comparison.
+- **Spec-heavy searches** — Searching "Dell laptop i5 16GB 1TB" may return a Dell i5 with different storage on Walmart or eBay. Retailer engines match by keyword relevance, not exact spec. A "Specs may vary across retailers" badge is shown on every result to set honest expectations. UPC-based matching is on the roadmap.
+
+- **Amazon availability** — Some products (PS5, certain Apple items) have restricted Amazon listings with no buybox price. When Amazon fails, Walmart and eBay fall back to keyword search with degraded accuracy.
+
+- **eBay condition** — eBay is user-sold inventory. Even with new-condition filtering and brand matching, configuration and bundling can vary. Treated as reference pricing rather than exact comparison.
+
+---
+
+## Roadmap
+
+- [ ] Product review scores from Amazon and eBay
+- [ ] Price history charts (30/60/90 day)
+- [ ] Price drop alerts
+- [ ] More retailers — Sam's Club, Target, BestBuy

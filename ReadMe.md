@@ -2,7 +2,7 @@
 
 Compare prices across Amazon, Walmart, and eBay in one search. See the best deal instantly.
 
-**[Live Demo](#)** · **[Backend API](#)**
+**[Live Demo](https://smart-scan-swart.vercel.app/)** · **[Backend API](https://smartscan-production-7598.up.railway.app/api/health)**
 
 ---
 

@@ -15,7 +15,18 @@ import {
   Cpu,
   Globe,
   Lock,
+  Menu,
 } from "lucide-react";
+
+function useWindowSize() {
+  const [w, setW] = React.useState(window.innerWidth);
+  React.useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return { isMobile: w < 640, isTablet: w >= 640 && w < 1024, width: w };
+}
 
 interface VendorListing {
   storeName: string;
@@ -186,7 +197,9 @@ function ConditionBadge({
 }
 
 export default function App() {
+  const { isMobile, isTablet } = useWindowSize();
   const [query, setQuery] = useState("");
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -343,11 +356,11 @@ export default function App() {
           style={{
             maxWidth: "1200px",
             margin: "0 auto",
-            padding: "0 2rem",
+            padding: isMobile ? "0 1rem" : "0 2rem",
             display: "flex",
             alignItems: "center",
-            height: "64px",
-            gap: "2rem",
+            height: "60px",
+            gap: "1rem",
           }}
         >
           {/* Logo */}
@@ -364,10 +377,10 @@ export default function App() {
               flexShrink: 0,
             }}
           >
-            <TrendingDown size={20} color={WARM.text} />
+            <TrendingDown size={18} color={WARM.text} />
             <span
               style={{
-                fontSize: "1.15rem",
+                fontSize: "1.1rem",
                 fontWeight: 800,
                 color: WARM.text,
                 letterSpacing: "-0.04em",
@@ -377,62 +390,163 @@ export default function App() {
             </span>
           </button>
 
-          {/* Category nav */}
-          <div style={{ display: "flex", gap: "0.125rem", flex: 1 }}>
-            {CATEGORIES.map((cat) => {
-              const isActive = activeCategory === cat.label;
-              return (
-                <button
-                  key={cat.label}
-                  onClick={() => handleCategory(cat.label)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                    padding: "0.4rem 0.75rem",
-                    background: "none",
-                    border: "none",
-                    borderRadius: "0.375rem",
-                    fontSize: "0.82rem",
-                    fontWeight: isActive ? 700 : 400,
-                    color: isActive ? WARM.text : "#334155",
-                    cursor: "pointer",
-                    borderBottom: isActive
-                      ? `2px solid ${WARM.text}`
-                      : "2px solid transparent",
-                  }}
-                >
-                  {cat.label}
-                </button>
-              );
-            })}
-          </div>
+          {/* Category nav — hidden on mobile */}
+          {!isMobile && (
+            <div style={{ display: "flex", gap: "0.125rem", flex: 1 }}>
+              {CATEGORIES.map((cat) => {
+                const isActive = activeCategory === cat.label;
+                return (
+                  <button
+                    key={cat.label}
+                    onClick={() => handleCategory(cat.label)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.3rem",
+                      padding: "0.4rem 0.625rem",
+                      background: "none",
+                      border: "none",
+                      borderRadius: "0.375rem",
+                      fontSize: isTablet ? "0.75rem" : "0.82rem",
+                      fontWeight: isActive ? 700 : 400,
+                      color: isActive ? WARM.text : "#334155",
+                      cursor: "pointer",
+                      borderBottom: isActive
+                        ? `2px solid ${WARM.text}`
+                        : "2px solid transparent",
+                    }}
+                  >
+                    {cat.icon} {!isTablet && cat.label}
+                    {isTablet && (
+                      <span style={{ fontSize: "0.7rem" }}>{cat.label}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Mobile: search takes flex space */}
+          {isMobile && <div style={{ flex: 1 }} />}
 
           {/* Right actions */}
-          <div
-            style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}
-          >
-            <button
-              onClick={() => setShowRoadmap(!showRoadmap)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                padding: "0.45rem 1rem",
-                backgroundColor: WARM.text,
-                border: `1px solid ${WARM.text}`,
-                borderRadius: "999px",
-                fontSize: "0.8rem",
-                fontWeight: 600,
-                color: "#fff",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              <BookOpen size={14} /> What's coming
-            </button>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            {!isMobile && (
+              <button
+                onClick={() => setShowRoadmap(!showRoadmap)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  padding: "0.4rem 0.875rem",
+                  backgroundColor: WARM.text,
+                  border: `1px solid ${WARM.text}`,
+                  borderRadius: "999px",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  whiteSpace: "nowrap" as const,
+                }}
+              >
+                <BookOpen size={13} /> Coming
+              </button>
+            )}
+            {isMobile && (
+              <button
+                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                style={{
+                  background: "none",
+                  border: `1px solid ${WARM.border}`,
+                  borderRadius: "0.5rem",
+                  padding: "0.4rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  color: WARM.text,
+                }}
+              >
+                <Menu size={18} />
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Mobile dropdown menu */}
+        {isMobile && showMobileMenu && (
+          <div
+            style={{
+              backgroundColor: WARM.surface,
+              borderTop: `1px solid ${WARM.border}`,
+              padding: "1rem",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "0.5rem",
+                marginBottom: "0.75rem",
+              }}
+            >
+              {CATEGORIES.map((cat) => {
+                const isActive = activeCategory === cat.label;
+                return (
+                  <button
+                    key={cat.label}
+                    onClick={() => {
+                      handleCategory(cat.label);
+                      setShowMobileMenu(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column" as const,
+                      alignItems: "center",
+                      gap: "0.25rem",
+                      padding: "0.625rem 0.5rem",
+                      backgroundColor: isActive ? WARM.text : WARM.canvas,
+                      border: `1px solid ${isActive ? WARM.text : WARM.border}`,
+                      borderRadius: "0.625rem",
+                      fontSize: "0.72rem",
+                      fontWeight: isActive ? 700 : 500,
+                      color: isActive ? "#fff" : WARM.text,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <span style={{ fontSize: "1.1rem" }}>{cat.icon}</span>
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => {
+                setShowRoadmap(true);
+                setShowMobileMenu(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "0.625rem",
+                backgroundColor: WARM.text,
+                color: "#fff",
+                border: "none",
+                borderRadius: "0.625rem",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.4rem",
+              }}
+            >
+              <BookOpen size={14} /> Coming
+            </button>
+          </div>
+        )}
 
         {/* Brand strip */}
         {activeCat && (
@@ -494,169 +608,194 @@ export default function App() {
 
       {/* ── ROADMAP PANEL ──────────────────────────────────── */}
       {showRoadmap && (
-        <div style={{ backgroundColor: WARM.text, color: "#fff" }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.7)",
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: isMobile ? "1rem" : "2rem",
+          }}
+          onClick={() => setShowRoadmap(false)}
+        >
           <div
             style={{
-              maxWidth: "1200px",
-              margin: "0 auto",
-              padding: "3rem 2rem",
+              backgroundColor: WARM.text,
+              color: "#fff",
+              borderRadius: "1rem",
+              padding: isMobile ? "1.5rem" : "2.5rem",
+              maxWidth: "720px",
+              width: "100%",
+              maxHeight: "90vh",
+              overflowY: "auto" as const,
             }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                marginBottom: "2rem",
-              }}
-            >
-              <div>
-                <p
-                  style={{
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase" as const,
-                    color: "#9C9488",
-                    margin: "0 0 0.5rem",
-                  }}
-                >
-                  Roadmap
-                </p>
-                <h2
-                  style={{
-                    fontSize: "1.75rem",
-                    fontWeight: 800,
-                    margin: 0,
-                    letterSpacing: "-0.03em",
-                  }}
-                >
-                  What's being built
-                </h2>
-                <p
-                  style={{
-                    color: "#9C9488",
-                    margin: "0.5rem 0 0",
-                    fontSize: "0.875rem",
-                  }}
-                >
-                  SmartScan is actively developed. Here's what's coming next.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowRoadmap(false)}
+            <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+              <div
                 style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#9C9488",
                   display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "2rem",
                 }}
               >
-                <X size={20} />
-              </button>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "1.25rem",
-              }}
-            >
-              {ROADMAP.map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    backgroundColor: "#2A2522",
-                    borderRadius: "0.875rem",
-                    padding: "1.5rem",
-                    border: "1px solid #3A3330",
-                  }}
-                >
-                  <div style={{ color: "#9C9488", marginBottom: "0.875rem" }}>
-                    {item.icon}
-                  </div>
-                  <h3
-                    style={{
-                      fontSize: "0.95rem",
-                      fontWeight: 700,
-                      margin: "0 0 0.5rem",
-                      color: "#fff",
-                    }}
-                  >
-                    {item.title}
-                  </h3>
+                <div>
                   <p
                     style={{
-                      fontSize: "0.82rem",
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase" as const,
                       color: "#9C9488",
-                      margin: 0,
-                      lineHeight: 1.6,
+                      margin: "0 0 0.5rem",
                     }}
                   >
-                    {item.desc}
+                    Roadmap
+                  </p>
+                  <h2
+                    style={{
+                      fontSize: "1.75rem",
+                      fontWeight: 800,
+                      margin: 0,
+                      letterSpacing: "-0.03em",
+                    }}
+                  >
+                    What's being built
+                  </h2>
+                  <p
+                    style={{
+                      color: "#9C9488",
+                      margin: "0.5rem 0 0",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    SmartScan is actively developed. Here's what's coming next.
                   </p>
                 </div>
-              ))}
-            </div>
-            <div
-              style={{
-                marginTop: "2rem",
-                padding: "1.25rem 1.5rem",
-                backgroundColor: "#2A2522",
-                borderRadius: "0.875rem",
-                border: "1px solid #3A3330",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap" as const,
-                gap: "1rem",
-              }}
-            >
-              <div>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.9rem" }}>
-                  API documentation
-                </p>
-                <p
+                <button
+                  onClick={() => setShowRoadmap(false)}
                   style={{
-                    margin: "0.25rem 0 0",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
                     color: "#9C9488",
-                    fontSize: "0.8rem",
+                    display: "flex",
                   }}
                 >
-                  <code
-                    style={{
-                      backgroundColor: "#1A1714",
-                      padding: "0.2rem 0.5rem",
-                      borderRadius: "0.25rem",
-                      fontSize: "0.78rem",
-                    }}
-                  >
-                    GET /api/search?q={"{product name}"}
-                  </code>{" "}
-                  — Returns live prices from Amazon, Walmart & eBay. Rate
-                  limited to 30 req/min.
-                </p>
+                  <X size={20} />
+                </button>
               </div>
-              <a
-                href="/api/health"
-                target="_blank"
-                rel="noopener noreferrer"
+              <div
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  padding: "0.6rem 1.125rem",
-                  backgroundColor: "#fff",
-                  color: WARM.text,
-                  borderRadius: "999px",
-                  textDecoration: "none",
-                  fontSize: "0.82rem",
-                  fontWeight: 700,
+                  display: "grid",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: "1rem",
                 }}
               >
-                View health status <ArrowRight size={14} />
-              </a>
+                {ROADMAP.map((item, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      backgroundColor: "#2A2522",
+                      borderRadius: "0.875rem",
+                      padding: "1.5rem",
+                      border: "1px solid #3A3330",
+                    }}
+                  >
+                    <div style={{ color: "#9C9488", marginBottom: "0.875rem" }}>
+                      {item.icon}
+                    </div>
+                    <h3
+                      style={{
+                        fontSize: "0.95rem",
+                        fontWeight: 700,
+                        margin: "0 0 0.5rem",
+                        color: "#fff",
+                      }}
+                    >
+                      {item.title}
+                    </h3>
+                    <p
+                      style={{
+                        fontSize: "0.82rem",
+                        color: "#9C9488",
+                        margin: 0,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {item.desc}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  marginTop: "2rem",
+                  padding: "1.25rem 1.5rem",
+                  backgroundColor: "#2A2522",
+                  borderRadius: "0.875rem",
+                  border: "1px solid #3A3330",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap" as const,
+                  gap: "1rem",
+                }}
+              >
+                <div>
+                  <p style={{ margin: 0, fontWeight: 600, fontSize: "0.9rem" }}>
+                    API documentation
+                  </p>
+                  <p
+                    style={{
+                      margin: "0.25rem 0 0",
+                      color: "#9C9488",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    <code
+                      style={{
+                        backgroundColor: "#1A1714",
+                        padding: "0.2rem 0.5rem",
+                        borderRadius: "0.25rem",
+                        fontSize: "0.78rem",
+                      }}
+                    >
+                      GET /api/search?q={"{product name}"}
+                    </code>{" "}
+                    — Returns live prices from Amazon, Walmart & eBay. Rate
+                    limited to 30 req/min.
+                  </p>
+                </div>
+                <a
+                  href="/api/health"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                    padding: "0.6rem 1.125rem",
+                    backgroundColor: "#fff",
+                    color: WARM.text,
+                    borderRadius: "999px",
+                    textDecoration: "none",
+                    fontSize: "0.82rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  View health status <ArrowRight size={14} />
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -669,13 +808,13 @@ export default function App() {
           maxWidth: "1200px",
           margin: "0 auto",
           width: "100%",
-          padding: "0 2rem",
+          padding: isMobile ? "0 1rem" : "0 2rem",
         }}
       >
         {/* Hero search section */}
         <section
           style={{
-            padding: "5rem 0 3.5rem",
+            padding: isMobile ? "2rem 1rem 1.5rem" : "5rem 0 3.5rem",
             textAlign: "center" as const,
             borderBottom: product ? `1px solid ${WARM.border}` : "none",
           }}
